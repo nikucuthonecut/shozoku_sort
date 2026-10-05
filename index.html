@@ -71,6 +71,11 @@ button{
     color:#333;
 }
 
+button:disabled{
+    opacity:.45;
+    cursor:default;
+}
+
 
 
 .rank-row{
@@ -101,6 +106,65 @@ button{
 .result-name{
     font-size:18px;
 }
+
+/* =========================================
+   結果画面
+========================================= */
+
+.result-card .rank-row{
+    display:flex;
+    align-items:center;
+    min-height:40px;
+    box-sizing:border-box;
+}
+
+.result-card .result-name{
+    flex:1;
+    min-width:0;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+}
+
+/* iPhoneなど幅の小さい画面では
+   トップ10がなるべく1画面に収まるようにする */
+@media (max-width:430px){
+
+    body{
+        padding:10px;
+    }
+
+    .result-card{
+        padding:12px;
+        margin-bottom:10px;
+    }
+
+    .result-card h2{
+        margin:4px 0 10px;
+        font-size:22px;
+    }
+
+    .result-card .rank-row{
+        min-height:34px;
+        padding:6px 4px;
+    }
+
+    .result-card .result-rank{
+        width:42px;
+        font-size:15px;
+    }
+
+    .result-card .result-name{
+        font-size:15px;
+    }
+
+    .result-card button{
+        padding:12px;
+        font-size:16px;
+        margin-top:8px;
+    }
+}
+
 
 /* =========================================
    選択ボタン
@@ -201,6 +265,12 @@ let survivors = [];
 
 let currentPageItems = [];
 
+/*
+ * 予選で選択した候補の番号
+ * ページを戻っても選択状態を保持する
+ */
+let selectedCandidateIndices = new Set();
+
 let battleCount = 0;
 
 let maxBattle = 0;
@@ -215,7 +285,7 @@ let right = null;
 let playedMatches = new Set();
 
 /*
- * 個人 / コンビ
+ * 個人ソート / コンビソート
  */
 let currentMode = null;
 
@@ -245,6 +315,25 @@ let totalBattleCount = 0;
 
 
 /* =========================================
+   予選のチェック状態変更
+========================================= */
+
+document
+    .getElementById("app")
+    .addEventListener("change", function(event){
+
+        if(
+            event.target.matches(
+                '#qualifyList input[type="checkbox"]'
+            )
+        ){
+            updateQualifySelection();
+        }
+
+    });
+
+
+/* =========================================
    アプリ全体のクリック処理
 ========================================= */
 
@@ -262,7 +351,7 @@ document
 
         /* ---------------------------------
            個人 / コンビ選択後
-           方法選択
+           ソート方法選択
         --------------------------------- */
 
         if(
@@ -297,6 +386,21 @@ document
         ){
 
             nextQualify();
+
+            return;
+        }
+
+
+        /* ---------------------------------
+           予選「戻る」
+        --------------------------------- */
+
+        if(
+            target.id ===
+            "backQualifyButton"
+        ){
+
+            previousQualify();
 
             return;
         }
@@ -664,6 +768,8 @@ function startSelectSort(){
 
     currentPageItems = [];
 
+    selectedCandidateIndices = new Set();
+
 
     showQualifyPage();
 
@@ -684,6 +790,28 @@ function showQualifyPage(){
         qualifyIndex >=
         candidates.length
     ){
+
+        /*
+         * ページ移動があっても重複しないよう、
+         * 最後に選択状態から本戦参加者を作る
+         */
+        survivors =
+            [...selectedCandidateIndices]
+            .sort((a,b) => a - b)
+            .map(index => candidates[index])
+            .filter(Boolean)
+            .map(item => ({
+
+                ...item,
+
+                rating: 1500,
+                games: 0,
+                wins: 0,
+                losses: 0,
+                draws: 0
+
+            }));
+
 
         if(
             survivors.length < 2
@@ -742,6 +870,10 @@ function showQualifyPage(){
             ソートする対象を選んでください
         </div>
 
+        <div class="progress" id="qualifyCount">
+            選択中：${selectedCandidateIndices.size}${currentMode === "persons" ? "人" : "組"}
+        </div>
+
 
         <div id="qualifyList">
     `;
@@ -757,6 +889,7 @@ html += `
     <input
         type="checkbox"
         value="${index}"
+        ${selectedCandidateIndices.has(qualifyIndex + index) ? "checked" : ""}
     >
 
     ${item.name}
@@ -783,6 +916,15 @@ html += `
             次へ
         </button>
 
+        <button
+            type="button"
+            id="backQualifyButton"
+            class="secondary"
+            ${qualifyIndex === 0 ? "disabled" : ""}
+        >
+            戻る
+        </button>
+
     </div>
 
     `;
@@ -799,11 +941,21 @@ html += `
    予選「次へ」
 ========================================= */
 
-function nextQualify(){
+function updateQualifySelection(){
+
+    const pageStart = qualifyIndex;
 
     /*
-     * 現在のページでチェックされた人
+     * 現在のページ分だけいったん削除
      */
+    currentPageItems.forEach((item,index) => {
+
+        selectedCandidateIndices.delete(
+            pageStart + index
+        );
+
+    });
+
 
     const checked =
         document.querySelectorAll(
@@ -811,55 +963,66 @@ function nextQualify(){
         );
 
 
-    const selected =
-        [...checked].map(
-            input =>
-                Number(input.value)
+    [...checked].forEach(input => {
+
+        selectedCandidateIndices.add(
+            pageStart + Number(input.value)
         );
 
+    });
+
+
+    const countElement =
+        document.getElementById("qualifyCount");
+
+    if(countElement){
+
+        countElement.textContent =
+            `選択中：${selectedCandidateIndices.size}${currentMode === "persons" ? "人" : "組"}`;
+
+    }
+
+}
+
+
+/* =========================================
+   予選「次へ」
+========================================= */
+
+function nextQualify(){
 
     /*
-     * 選択された人を追加
+     * 次へを押した時点の選択状態を保存
      */
-
-    selected.forEach(
-        index => {
-
-            const item =
-                currentPageItems[index];
-
-
-            if(!item){
-                return;
-            }
-
-
-            survivors.push({
-
-                ...item,
-
-                rating: 1500,
-
-                games: 0,
-
-                wins: 0,
-
-                losses: 0,
-
-                draws: 0
-
-            });
-
-        }
-    );
-
-
-    /*
-     * 次のページへ
-     */
+    updateQualifySelection();
 
     qualifyIndex += PAGE_SIZE;
 
+    showQualifyPage();
+
+}
+
+
+/* =========================================
+   予選「戻る」
+========================================= */
+
+function previousQualify(){
+
+    /*
+     * 現在ページの変更も保存してから1ページ戻る
+     */
+    updateQualifySelection();
+
+    if(qualifyIndex === 0){
+        return;
+    }
+
+    qualifyIndex -= PAGE_SIZE;
+
+    if(qualifyIndex < 0){
+        qualifyIndex = 0;
+    }
 
     showQualifyPage();
 
@@ -1123,7 +1286,7 @@ function battleNext(){
 
     <div class="card">
 
-        <h2>どちらかを選んでください</h2>
+        <h2>どちらかの方を選んでください</h2>
 
         <div class="progress">
             ${battleCount + 1}
@@ -1341,7 +1504,7 @@ function finalBattleNext(){
 
     <div class="card">
 
-        <h2>どちらかを選んでください</h2>
+        <h2>どちらかの方を選んでください</h2>
 
         <div class="progress">
             ${battleCount + 1}
@@ -1788,7 +1951,7 @@ function showResult(){
 
     let html = `
 
-    <div class="card">
+    <div class="card result-card">
 
         <h2>最終結果</h2>
 
