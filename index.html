@@ -936,13 +936,13 @@ html += `
         </div>
 
 
-        <button
-            type="button"
-            id="nextQualifyButton"
-            class="primary"
-        >
-            次へ
-        </button>
+<button
+    type="button"
+    id="nextQualifyButton"
+    class="primary"
+>
+    ${qualifyIndex + PAGE_SIZE >= candidates.length ? "開始" : "次へ"}
+</button>
 
         <button
             type="button"
